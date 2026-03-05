@@ -2,9 +2,11 @@ let epubLines = [];
 let currentIndex = -1; 
 let currentFileName = "";
 let isVisible = false;
+let isTextHidden = false; 
 let chapterMarkers = []; 
 
-// 메시지 수신 (토글)
+const STEALTH_URL = "https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Global_Objects/Array/slice";
+
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "toggleReader") {
     const bar = document.getElementById('stealth-epub-reader-bar');
@@ -18,14 +20,13 @@ chrome.runtime.onMessage.addListener((request) => {
   }
 });
 
-// 키보드 제어 (좌/우 방향키: 이동, 키패드 0: 숨기기)
 window.addEventListener('keydown', (e) => {
   const bar = document.getElementById('stealth-epub-reader-bar');
   if (!bar || !isVisible) return;
 
   if (e.code === "Numpad0") {
-    bar.style.display = 'none';
-    isVisible = false;
+    isTextHidden = !isTextHidden;
+    updateDisplay();
     return;
   }
 
@@ -47,7 +48,6 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// 긴 문장을 110자 단위로 자르는 함수
 function splitLongLine(line, maxLength = 110) {
   const chunks = [];
   for (let i = 0; i < line.length; i += maxLength) {
@@ -60,12 +60,21 @@ function createReaderBar() {
   const readerBar = document.createElement('div');
   readerBar.id = 'stealth-epub-reader-bar';
   
-  Object.assign(readerBar.style, {
-    position: 'fixed', bottom: '0', left: '0', width: '100%', height: '30px',
-    backgroundColor: '#ffffff', color: '#000000', fontSize: '13px', zIndex: '9999999',
-    display: 'flex', alignItems: 'center', borderTop: '1px solid #ddd',
-    boxSizing: 'border-box', fontFamily: 'sans-serif', userSelect: 'none'
-  });
+  // 전체 바 스타일 설정 (!important 추가)
+  readerBar.style.cssText = `
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 30px !important;
+    background-color: #ffffff !important;
+    z-index: 9999999 !important;
+    display: flex !important;
+    align-items: center !important;
+    border-top: 1px solid #ddd !important;
+    box-sizing: border-box !important;
+    user-select: none !important;
+  `;
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
@@ -76,11 +85,11 @@ function createReaderBar() {
   const uploadLabel = document.createElement('label');
   uploadLabel.htmlFor = 'epub-upload-hidden';
   uploadLabel.innerText = '+';
-  uploadLabel.style.cssText = 'cursor: pointer; font-weight: bold; padding: 0 15px; font-size: 18px; color: #555; border-right: 1px solid #eee; height: 100%; display: flex; align-items: center; flex-shrink: 0;';
+  uploadLabel.style.cssText = 'cursor: pointer !important; font-weight: bold !important; padding: 0 15px !important; font-size: 16px !important; color: #888 !important; border-right: 1px solid #eee !important; height: 100% !important; display: flex !important; align-items: center !important; flex-shrink: 0 !important;';
 
   const chapterSelect = document.createElement('select');
   chapterSelect.id = 'epub-chapter-select';
-  chapterSelect.style.cssText = 'border: none; background: transparent; font-size: 11px; color: #888; width: 55px; margin-left: 5px; cursor: pointer; outline: none; flex-shrink: 0; appearance: none; text-align: center;';
+  chapterSelect.style.cssText = 'border: none !important; background: transparent !important; font-size: 11px !important; color: #888 !important; width: 60px !important; margin-left: 5px !important; cursor: pointer !important; outline: none !important; flex-shrink: 0 !important; appearance: none !important; text-align: center !important; font-family: monospace !important;';
   
   chapterSelect.onchange = (e) => {
     if (e.target.value !== "") {
@@ -92,11 +101,27 @@ function createReaderBar() {
 
   const textDisplay = document.createElement('div');
   textDisplay.id = 'epub-text-display';
-  textDisplay.style.cssText = 'flex-grow: 1; cursor: pointer; padding: 0 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; height: 100%; display: flex; align-items: center; justify-content: flex-start;';
-  textDisplay.innerText = "파일을 선택해 주세요.";
+  // 텍스트 색상을 #555555(부드러운 회색)로 고정하고 !important 적용
+  textDisplay.style.cssText = `
+    flex-grow: 1 !important;
+    cursor: pointer !important;
+    padding: 0 20px !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    text-align: left !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    color: #555555 !important; 
+    font-size: 12px !important;
+    font-family: monospace, sans-serif !important;
+  `;
+  textDisplay.innerText = "Ready...";
 
   textDisplay.onclick = (e) => {
-    if (epubLines.length === 0) return;
+    if (epubLines.length === 0 || isTextHidden) return;
     const rect = textDisplay.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     if (clickX > rect.width / 3) {
@@ -116,7 +141,7 @@ function createReaderBar() {
     if (!file) return;
 
     currentFileName = file.name;
-    textDisplay.innerText = "로딩 중...";
+    textDisplay.innerText = "Loading...";
     chapterMarkers = [];
     chapterSelect.innerHTML = '';
     
@@ -124,7 +149,8 @@ function createReaderBar() {
       const zip = await JSZip.loadAsync(file);
       const containerText = await zip.file("META-INF/container.xml").async("string");
       const containerDoc = new DOMParser().parseFromString(containerText, "text/xml");
-      const opfPath = containerDoc.querySelector("rootfile").getAttribute("full-path");
+      const rootFile = containerDoc.querySelector("rootfile");
+      const opfPath = rootFile.getAttribute("full-path");
       const baseDir = opfPath.substring(0, opfPath.lastIndexOf("/") + 1);
 
       const opfText = await zip.file(opfPath).async("string");
@@ -157,13 +183,12 @@ function createReaderBar() {
                                      .filter(line => line.length > 1 && line !== "\u00A0");
 
         if (originalLines.length > 0) {
-          chapterMarkers.push({ title: `Ch ${actualChapterCount}`, index: tempLines.length });
+          chapterMarkers.push({ title: `ID ${actualChapterCount}`, index: tempLines.length });
           const option = document.createElement('option');
           option.value = tempLines.length;
-          option.innerText = `Ch ${actualChapterCount}`;
+          option.innerText = `ID ${actualChapterCount}`;
           chapterSelect.appendChild(option);
           
-          // 각 문장을 110자 단위로 체크하여 필요시 분할
           originalLines.forEach(line => {
             if (line.length > 110) {
               const slicedChunks = splitLongLine(line, 110);
@@ -183,15 +208,14 @@ function createReaderBar() {
 
       chrome.storage.local.get([currentFileName], (result) => {
         if (result[currentFileName] !== undefined) {
-          if (confirm("이전에 읽던 위치가 있습니다. 이어 보시겠습니까?")) {
+          if (confirm("이어 보시겠습니까?")) {
             currentIndex = result[currentFileName];
             updateDisplay();
           }
         }
       });
     } catch (err) {
-      textDisplay.innerText = "파싱 실패";
-      console.error(err);
+      textDisplay.innerText = "Error";
     }
   };
 }
@@ -200,10 +224,16 @@ function updateDisplay() {
   const display = document.getElementById('epub-text-display');
   const chapterSelect = document.getElementById('epub-chapter-select');
 
-  if (display && epubLines[currentIndex]) {
-    display.innerText = epubLines[currentIndex];
+  if (display) {
+    if (isTextHidden) {
+      display.innerText = STEALTH_URL;
+    } else if (epubLines[currentIndex]) {
+      display.innerText = epubLines[currentIndex];
+    } else if (currentIndex === -1 && currentFileName) {
+      display.innerText = currentFileName;
+    }
     
-    if (chapterSelect && chapterMarkers.length > 0) {
+    if (chapterSelect && chapterMarkers.length > 0 && currentIndex >= 0) {
       let currentChIndex = 0;
       for (let i = 0; i < chapterMarkers.length; i++) {
         if (currentIndex >= chapterMarkers[i].index) {
