@@ -8,11 +8,19 @@ let chapterMarkers = [];
 const STEALTH_URL = "https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Global_Objects/Array/slice";
 const STORAGE_KEY_STATE = "__epub_reader_state__";
 const STORAGE_KEY_EPUB  = "__epub_reader_file__";
+const STORAGE_KEY_NAV   = "__epub_reader_navigating__";
 
 // ── 페이지 이동 전 상태 저장 ──────────────────────────────────────
 window.addEventListener('beforeunload', () => {
   if (!isVisible && epubLines.length === 0) return;
-  saveFullState();
+  _saveDirty = true;
+  flushSave();
+});
+
+// 화면 이동 시작을 background에 알림 (탭 닫기와 구분용)
+window.addEventListener('pagehide', () => {
+  if (!isVisible && epubLines.length === 0) return;
+  chrome.runtime.sendMessage({ action: 'setNavigating', tabId: null });
 });
 
 // ── 메시지 수신 (툴바 버튼 클릭) ─────────────────────────────────
@@ -104,12 +112,12 @@ function base64ToBuffer(base64) {
 
 // ── 상태 전체 저장 ─────────────────────────────────────────────────
 function saveFullState() {
+  // epubLines는 크기가 크므로 저장하지 않음 — 복원 시 바이너리 재파싱으로 처리
   const state = {
     isVisible,
     isTextHidden,
     currentFileName,
     currentIndex,
-    epubLines,
     chapterMarkers,
   };
   chrome.storage.local.set({ [STORAGE_KEY_STATE]: state });
@@ -170,7 +178,7 @@ function createReaderBar() {
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.id   = 'epub-upload-hidden';
-  fileInput.accept = '.epub';
+  fileInput.accept = '.epub,.pdf';
   fileInput.style.display = 'none';
 
   const uploadLabel = document.createElement('label');
@@ -317,13 +325,11 @@ async function parseAndLoadEpub(arrayBuffer, chapterSelectEl, textDisplayEl) {
 
   if (textDisplayEl) textDisplayEl.innerText = currentFileName;
 
-  // 이어보기 확인
+  // 항상 이어보기
   chrome.storage.local.get([currentFileName], (result) => {
     if (result[currentFileName] !== undefined) {
-      if (confirm("이어 보시겠습니까?")) {
-        currentIndex = result[currentFileName];
-        updateDisplay();
-      }
+      currentIndex = result[currentFileName];
+      updateDisplay();
     }
   });
 
@@ -360,61 +366,51 @@ function updateDisplay() {
 }
 
 // ── 진행 위치 저장 (파일명 기준) ──────────────────────────────────
+// ── 주기적 저장 ───────────────────────────────────────────────────
+let _saveDirty = false;
+
 function saveProgress() {
+  // 페이지 넘김 시 즉시 저장하지 않고 dirty 플래그만 세움
+  _saveDirty = true;
+}
+
+function flushSave() {
+  if (!_saveDirty) return;
+  _saveDirty = false;
   if (currentFileName && currentIndex >= 0) {
     chrome.storage.local.set({ [currentFileName]: currentIndex });
   }
   saveFullState();
 }
 
+// 2초마다 변경사항 저장
+setInterval(flushSave, 2000);
+
 // ── 페이지 로드 시 자동 복원 ──────────────────────────────────────
 (function autoRestore() {
-  chrome.storage.local.get([STORAGE_KEY_STATE, STORAGE_KEY_EPUB], (result) => {
+  chrome.storage.local.get([STORAGE_KEY_STATE, STORAGE_KEY_EPUB, STORAGE_KEY_NAV], (result) => {
     const state    = result[STORAGE_KEY_STATE];
     const epubFile = result[STORAGE_KEY_EPUB];
+    const isNav    = result[STORAGE_KEY_NAV];
 
-    // 이전에 바가 열려있었던 경우에만 복원
-    if (!state || !state.isVisible) return;
+    // 화면 이동 플래그가 없으면 복원하지 않음 (새 탭, 브라우저 재시작 등)
+    if (!isNav || !state || !state.isVisible) return;
+
+    // 플래그 즉시 삭제 (한 번만 복원, 탭 닫기와 구분은 background에서 처리)
+    chrome.storage.local.remove(STORAGE_KEY_NAV);
 
     // 바 생성
     createReaderBar();
 
-    // 저장된 epubLines가 있으면 파싱 없이 바로 복원
-    if (state.epubLines && state.epubLines.length > 0) {
-      currentFileName = state.currentFileName || "";
-      currentIndex    = state.currentIndex    ?? -1;
-      isTextHidden    = state.isTextHidden     || false;
-      chapterMarkers  = state.chapterMarkers   || [];
-      epubLines       = state.epubLines;
-
-      const chapterSelect = document.getElementById('epub-chapter-select');
-      if (chapterSelect) {
-        chapterSelect.innerHTML = '';
-        chapterMarkers.forEach(ch => {
-          const option     = document.createElement('option');
-          option.value     = ch.index;
-          option.innerText = ch.title;
-          chapterSelect.appendChild(option);
-        });
-      }
-
-      isVisible = true;
-      const bar = document.getElementById('stealth-epub-reader-bar');
-      if (bar) bar.style.display = 'flex';
-
-      updateDisplay();
-      return;
-    }
-
-    // epubLines가 없지만 EPUB 바이너리가 저장돼 있으면 재파싱
+    // EPUB 바이너리 재파싱으로 복원
     if (epubFile && epubFile.data) {
       currentFileName = epubFile.name;
-      const arrayBuffer = base64ToBuffer(epubFile.data);
+      isTextHidden    = state.isTextHidden || false;
+      const arrayBuffer     = base64ToBuffer(epubFile.data);
       const chapterSelectEl = document.getElementById('epub-chapter-select');
       const textDisplayEl   = document.getElementById('epub-text-display');
 
       parseAndLoadEpub(arrayBuffer, chapterSelectEl, textDisplayEl).then(() => {
-        // 저장된 읽기 위치로 복원
         if (state.currentIndex !== undefined && state.currentIndex >= 0) {
           currentIndex = state.currentIndex;
           updateDisplay();
