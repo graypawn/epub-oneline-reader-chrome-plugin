@@ -37,6 +37,12 @@ window.addEventListener('keydown', (e) => {
   const bar = document.getElementById('stealth-epub-reader-bar');
   if (!bar || !isVisible) return;
 
+  // 숨김 상태가 아닐 때는 좌우 화살표의 기본 스크롤 동작을 항상 차단
+  if (!isTextHidden && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   if (e.code === "Numpad0") {
     isTextHidden = !isTextHidden;
     updateDisplay();
@@ -44,6 +50,7 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (epubLines.length === 0) return;
+  if (isTextHidden) return; // 숨김 ON 상태에서는 페이지 넘김 잠금
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
 
   if (e.key === "ArrowRight") {
