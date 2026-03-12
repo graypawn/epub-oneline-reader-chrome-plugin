@@ -51,7 +51,16 @@ window.addEventListener('keydown', (e) => {
 
   if (epubLines.length === 0) return;
   if (isTextHidden) return; // 숨김 ON 상태에서는 페이지 넘김 잠금
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
+  // 챕터 셀렉트 포커스 시: 좌우는 페이지 넘김으로 가로채고, 상하는 기본 동작(챕터 변경) 유지
+  const isChapterSelectFocused = e.target === document.getElementById('epub-chapter-select');
+  if (isChapterSelectFocused && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.target.blur(); // 좌우 화살표 사용 시 포커스 해제
+  } else if (!isChapterSelectFocused) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+  }
 
   if (e.key === "ArrowRight") {
     if (currentIndex < epubLines.length - 1) {
