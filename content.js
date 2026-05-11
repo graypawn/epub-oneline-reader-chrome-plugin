@@ -18,8 +18,9 @@ window.addEventListener('beforeunload', () => {
 });
 
 // 화면 이동 시작을 background에 알림 (탭 닫기와 구분용)
-window.addEventListener('pagehide', () => {
+window.addEventListener('pagehide', (e) => {
   if (!isVisible && epubLines.length === 0) return;
+  console.log('[EPUB] pagehide persisted:', e.persisted);
   chrome.runtime.sendMessage({ action: 'setNavigating', tabId: null });
 });
 

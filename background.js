@@ -10,18 +10,15 @@ chrome.runtime.onStartup.addListener(() => {
 // content script로부터 "화면 이동 중" 메시지 수신 → 탭 ID와 함께 플래그 저장
 chrome.runtime.onMessage.addListener((request, sender) => {
   if (request.action === "setNavigating") {
-    // 탭 ID를 키로 저장해서 해당 탭의 이동임을 표시
+    console.log('[EPUB BG] setNavigating from tab:', sender.tab.id);
     chrome.storage.local.set({ [STORAGE_KEY_NAV]: sender.tab.id });
-  }
-
-  if (request.action === "toggleReader") {
-    // toggleReader는 action.onClicked에서 처리하므로 여기선 무시
   }
 });
 
 // 탭이 닫힐 때 → 해당 탭의 플래그였다면 삭제
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.local.get(STORAGE_KEY_NAV, (result) => {
+    console.log('[EPUB BG] tab removed:', tabId, 'nav flag:', result[STORAGE_KEY_NAV]);
     if (result[STORAGE_KEY_NAV] === tabId) {
       chrome.storage.local.remove([STORAGE_KEY_NAV, STORAGE_KEY_STATE, STORAGE_KEY_EPUB]);
     }
