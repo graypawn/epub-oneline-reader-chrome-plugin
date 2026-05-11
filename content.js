@@ -87,13 +87,47 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ── 유틸 ───────────────────────────────────────────────────────────
-const LINE_SPLIT_LENGTH = 30;
+const LINE_SPLIT_LENGTH = 78;
 
 function splitLongLine(line, maxLength = LINE_SPLIT_LENGTH) {
+  const trimmed = line.trim();
+  if (!trimmed) return [];
+
   const chunks = [];
-  for (let i = 0; i < line.length; i += maxLength) {
-    chunks.push(line.substring(i, i + maxLength));
+  const words = trimmed.split(/\s+/);
+  let currentLine = '';
+
+  const pushLongWordChunks = (word) => {
+    for (let i = 0; i < word.length; i += maxLength) {
+      chunks.push(word.substring(i, i + maxLength));
+    }
+  };
+
+  for (const word of words) {
+    if (word.length > maxLength) {
+      if (currentLine) {
+        chunks.push(currentLine);
+        currentLine = '';
+      }
+      pushLongWordChunks(word);
+      continue;
+    }
+
+    if (!currentLine) {
+      currentLine = word;
+      continue;
+    }
+
+    const nextLine = `${currentLine} ${word}`;
+    if (nextLine.length <= maxLength) {
+      currentLine = nextLine;
+    } else {
+      chunks.push(currentLine);
+      currentLine = word;
+    }
   }
+
+  if (currentLine) chunks.push(currentLine);
   return chunks;
 }
 
