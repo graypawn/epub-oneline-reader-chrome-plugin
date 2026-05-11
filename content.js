@@ -87,7 +87,9 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ── 유틸 ───────────────────────────────────────────────────────────
-function splitLongLine(line, maxLength = 110) {
+const LINE_SPLIT_LENGTH = 30;
+
+function splitLongLine(line, maxLength = LINE_SPLIT_LENGTH) {
   const chunks = [];
   for (let i = 0; i < line.length; i += maxLength) {
     chunks.push(line.substring(i, i + maxLength));
@@ -310,8 +312,8 @@ async function parseAndLoadEpub(arrayBuffer, chapterSelectEl, textDisplayEl) {
       }
 
       originalLines.forEach(line => {
-        if (line.length > 110) {
-          tempLines = tempLines.concat(splitLongLine(line, 110));
+        if (line.length > LINE_SPLIT_LENGTH) {
+          tempLines = tempLines.concat(splitLongLine(line, LINE_SPLIT_LENGTH));
         } else {
           tempLines.push(line);
         }
