@@ -87,7 +87,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ── 유틸 ───────────────────────────────────────────────────────────
-const LINE_SPLIT_LENGTH = 78;
+const LINE_SPLIT_LENGTH = 75;
 
 function splitLongLine(line, maxLength = LINE_SPLIT_LENGTH) {
   const trimmed = line.trim();
