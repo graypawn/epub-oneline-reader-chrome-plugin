@@ -88,18 +88,8 @@ window.addEventListener('keydown', (e) => {
 
 // ── 유틸 ───────────────────────────────────────────────────────────
 const LINE_SPLIT_LENGTH = 78;
-const WIDTH_MARGIN_PX = 40;
-let measureContext = null;
 
-function getMeasureContext() {
-  if (!measureContext) {
-    const canvas = document.createElement('canvas');
-    measureContext = canvas.getContext('2d');
-  }
-  return measureContext;
-}
-
-function splitLongLine(line, maxWidthPx, fontSpec, maxLength = LINE_SPLIT_LENGTH) {
+function splitLongLine(line, maxLength = LINE_SPLIT_LENGTH) {
   const trimmed = line.trim();
   if (!trimmed) return [];
 
@@ -107,35 +97,14 @@ function splitLongLine(line, maxWidthPx, fontSpec, maxLength = LINE_SPLIT_LENGTH
   const words = trimmed.split(/\s+/);
   let currentLine = '';
 
-  const context = getMeasureContext();
-  if (context && fontSpec) context.font = fontSpec;
-
-  const getWidth = (text) => {
-    return context ? context.measureText(text).width : 0;
-  };
-
-  const isWithinWidth = (text) => {
-    if (!context) return text.length <= maxLength;
-    if (!maxWidthPx || maxWidthPx <= 0) return text.length <= maxLength;
-    return getWidth(text) <= maxWidthPx;
-  };
-
   const pushLongWordChunks = (word) => {
-    let start = 0;
-    while (start < word.length) {
-      let end = start + 1;
-      while (end <= word.length && isWithinWidth(word.substring(start, end))) {
-        end++;
-      }
-
-      const fitEnd = Math.max(start + 1, end - 1);
-      chunks.push(word.substring(start, fitEnd));
-      start = fitEnd;
+    for (let i = 0; i < word.length; i += maxLength) {
+      chunks.push(word.substring(i, i + maxLength));
     }
   };
 
   for (const word of words) {
-    if (!isWithinWidth(word)) {
+    if (word.length > maxLength) {
       if (currentLine) {
         chunks.push(currentLine);
         currentLine = '';
@@ -150,7 +119,7 @@ function splitLongLine(line, maxWidthPx, fontSpec, maxLength = LINE_SPLIT_LENGTH
     }
 
     const nextLine = `${currentLine} ${word}`;
-    if (isWithinWidth(nextLine)) {
+    if (nextLine.length <= maxLength) {
       currentLine = nextLine;
     } else {
       chunks.push(currentLine);
@@ -350,14 +319,6 @@ async function parseAndLoadEpub(arrayBuffer, chapterSelectEl, textDisplayEl) {
   chapterMarkers = [];
   if (chapterSelectEl) chapterSelectEl.innerHTML = '';
 
-  let splitWidthPx = 0;
-  let splitFontSpec = '';
-  if (textDisplayEl) {
-    const computedStyle = window.getComputedStyle(textDisplayEl);
-    splitFontSpec = computedStyle.font;
-    splitWidthPx = Math.max(1, textDisplayEl.clientWidth - WIDTH_MARGIN_PX);
-  }
-
   for (let i = 0; i < spineIds.length; i++) {
     const id       = spineIds[i];
     const href     = manifestItems[id];
@@ -385,7 +346,11 @@ async function parseAndLoadEpub(arrayBuffer, chapterSelectEl, textDisplayEl) {
       }
 
       originalLines.forEach(line => {
-        tempLines = tempLines.concat(splitLongLine(line, splitWidthPx, splitFontSpec, LINE_SPLIT_LENGTH));
+        if (line.length > LINE_SPLIT_LENGTH) {
+          tempLines = tempLines.concat(splitLongLine(line, LINE_SPLIT_LENGTH));
+        } else {
+          tempLines.push(line);
+        }
       });
 
       actualChapterCount++;
