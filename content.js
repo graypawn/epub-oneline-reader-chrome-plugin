@@ -330,7 +330,7 @@ async function parseAndLoadEpub(arrayBuffer, chapterSelectEl, textDisplayEl) {
     const doc         = new DOMParser().parseFromString(htmlContent, "text/html");
 
     const rawText      = doc.body.innerText || doc.body.textContent;
-    const originalLines = rawText.split(/[.?!]\s|\n/)
+    const originalLines = rawText.split(/\n/)
                                  .map(line => line.replace(/\s+/g, ' ').trim())
                                  .filter(line => line.length > 1 && line !== "\u00A0");
 
