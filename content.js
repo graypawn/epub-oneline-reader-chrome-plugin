@@ -9,6 +9,7 @@ const STEALTH_URL = "https://developer.mozilla.org/ko/docs/Web/JavaScript/Refere
 const STORAGE_KEY_STATE = "__epub_reader_state__";
 const STORAGE_KEY_EPUB  = "__epub_reader_file__";
 const STORAGE_KEY_NAV   = "__epub_reader_navigating__";
+const BLOCK_LINE_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote';
 
 // ── 페이지 이동 전 상태 저장 ──────────────────────────────────────
 window.addEventListener('beforeunload', () => {
@@ -129,6 +130,29 @@ function splitLongLine(line, maxLength = LINE_SPLIT_LENGTH) {
 
   if (currentLine) chunks.push(currentLine);
   return chunks;
+}
+
+function normalizeLine(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function isUsableLine(line) {
+  return line.length > 1 && line !== "\u00A0";
+}
+
+function extractOriginalLines(doc) {
+  const blockNodes = Array.from(doc.body.querySelectorAll(BLOCK_LINE_SELECTOR));
+
+  if (blockNodes.length > 0) {
+    return blockNodes
+      .map(node => normalizeLine(node.innerText || node.textContent || ''))
+      .filter(isUsableLine);
+  }
+
+  return (doc.body.innerText || doc.body.textContent || '')
+    .split(/\n/)
+    .map(normalizeLine)
+    .filter(isUsableLine);
 }
 
 // ArrayBuffer ↔ base64 변환 (EPUB 바이너리 저장용)
@@ -329,10 +353,7 @@ async function parseAndLoadEpub(arrayBuffer, chapterSelectEl, textDisplayEl) {
     const htmlContent = await fileData.async("string");
     const doc         = new DOMParser().parseFromString(htmlContent, "text/html");
 
-    const rawText      = doc.body.innerText || doc.body.textContent;
-    const originalLines = rawText.split(/\n/)
-                                 .map(line => line.replace(/\s+/g, ' ').trim())
-                                 .filter(line => line.length > 1 && line !== "\u00A0");
+    const originalLines = extractOriginalLines(doc);
 
     if (originalLines.length > 0) {
       const chTitle = `ID ${actualChapterCount}`;
