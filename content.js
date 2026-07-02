@@ -4,12 +4,14 @@ let currentFileName = "";
 let isVisible = false;
 let isTextHidden = false;
 let chapterMarkers = [];
+let autoHideTimer = null;
 
 const STEALTH_URL = "https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Global_Objects/Array/slice";
 const STORAGE_KEY_STATE = "__epub_reader_state__";
 const STORAGE_KEY_EPUB  = "__epub_reader_file__";
 const STORAGE_KEY_NAV   = "__epub_reader_navigating__";
 const BLOCK_LINE_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote';
+const AUTO_HIDE_DELAY_MS = 5000;
 
 // ── 페이지 이동 전 상태 저장 ──────────────────────────────────────
 window.addEventListener('beforeunload', () => {
@@ -32,10 +34,16 @@ chrome.runtime.onMessage.addListener((request) => {
     if (bar) {
       isVisible = !isVisible;
       bar.style.display = isVisible ? 'flex' : 'none';
+      if (isVisible) {
+        scheduleAutoHide();
+      } else {
+        clearAutoHideTimer();
+      }
       saveFullState();
     } else {
       createReaderBar();
       isVisible = true;
+      scheduleAutoHide();
       // 바를 새로 만든 직후 저장된 상태 복원 시도
       restoreFullState();
     }
@@ -56,6 +64,12 @@ window.addEventListener('keydown', (e) => {
   if (e.code === "Numpad0") {
     isTextHidden = !isTextHidden;
     updateDisplay();
+    if (isTextHidden) {
+      clearAutoHideTimer();
+    } else {
+      scheduleAutoHide();
+    }
+    saveFullState();
     return;
   }
 
@@ -76,12 +90,14 @@ window.addEventListener('keydown', (e) => {
     if (currentIndex < epubLines.length - 1) {
       currentIndex++;
       updateDisplay();
+      scheduleAutoHide();
       saveProgress();
     }
   } else if (e.key === "ArrowLeft") {
     if (currentIndex > 0) {
       currentIndex--;
       updateDisplay();
+      scheduleAutoHide();
       saveProgress();
     }
   }
@@ -155,6 +171,26 @@ function extractOriginalLines(doc) {
     .filter(isUsableLine);
 }
 
+function clearAutoHideTimer() {
+  if (autoHideTimer) {
+    clearTimeout(autoHideTimer);
+    autoHideTimer = null;
+  }
+}
+
+function scheduleAutoHide() {
+  clearAutoHideTimer();
+  if (!isVisible || isTextHidden) return;
+
+  autoHideTimer = setTimeout(() => {
+    autoHideTimer = null;
+    if (!isVisible || isTextHidden) return;
+    isTextHidden = true;
+    updateDisplay();
+    saveFullState();
+  }, AUTO_HIDE_DELAY_MS);
+}
+
 // ArrayBuffer ↔ base64 변환 (EPUB 바이너리 저장용)
 function bufferToBase64(buffer) {
   let binary = '';
@@ -213,6 +249,7 @@ function restoreFullState() {
     if (bar) bar.style.display = 'flex';
 
     updateDisplay();
+    scheduleAutoHide();
   });
 }
 
@@ -255,6 +292,7 @@ function createReaderBar() {
     if (e.target.value !== "") {
       currentIndex = parseInt(e.target.value);
       updateDisplay();
+      scheduleAutoHide();
       saveProgress();
     }
   };
@@ -289,6 +327,7 @@ function createReaderBar() {
       if (currentIndex > 0) currentIndex--;
     }
     updateDisplay();
+    scheduleAutoHide();
     saveProgress();
   };
 
@@ -388,6 +427,7 @@ async function parseAndLoadEpub(arrayBuffer, chapterSelectEl, textDisplayEl) {
     if (result[currentFileName] !== undefined) {
       currentIndex = result[currentFileName];
       updateDisplay();
+      scheduleAutoHide();
     }
   });
 
@@ -476,6 +516,7 @@ setInterval(flushSave, 2000);
         isVisible = true;
         const bar = document.getElementById('stealth-epub-reader-bar');
         if (bar) bar.style.display = 'flex';
+        scheduleAutoHide();
       });
     }
   });
