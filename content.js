@@ -11,7 +11,7 @@ const STORAGE_KEY_STATE = "__epub_reader_state__";
 const STORAGE_KEY_EPUB  = "__epub_reader_file__";
 const STORAGE_KEY_NAV   = "__epub_reader_navigating__";
 const BLOCK_LINE_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote';
-const AUTO_HIDE_DELAY_MS = 5000;
+const AUTO_HIDE_DELAY_MS = 8000;
 
 // ── 페이지 이동 전 상태 저장 ──────────────────────────────────────
 window.addEventListener('beforeunload', () => {
